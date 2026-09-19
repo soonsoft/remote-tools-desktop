@@ -468,7 +468,8 @@ applyTheme(savedTheme === "light" ? "light" : "dark");
 setStatus(false, "");
 
 if (invoke) {
-  invoke("recent_logs").then((ls) => { (ls || []).forEach(renderLog); }).catch(() => {});
+  /* recent_logs() 已是时间倒序（新→旧）；renderLog 是头部插入，故需倒着回放才能在页面上保持新→旧 */
+  invoke("recent_logs").then((ls) => { for (let i = (ls || []).length - 1; i >= 0; i--) renderLog(ls[i]); }).catch(() => {});
   loadConfig();
 } else {
   console.error("window.__TAURI__ 命令 API 不可用：检查 tauri.conf withGlobalTauri / capabilities");
