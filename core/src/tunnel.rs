@@ -113,15 +113,18 @@ async fn connect_and_serve(
 ) -> Result<(), String> {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
     let mut request = cfg.server_url.clone().into_client_request().map_err(|e| e.to_string())?;
-    request.headers_mut().insert("authorization",
-        format!("Bearer {}", cfg.token).parse().unwrap());
-    let (mut ws, _resp) = tokio_tungstenite::connect_async(request)
+    let auth: tokio_tungstenite::tungstenite::http::HeaderValue =
+        format!("Bearer {}", cfg.token).parse()
+            .map_err(|_| "配对令牌含非法字符，无法用于鉴权头".to_string())?;
+    request.headers_mut().insert("authorization", auth);
+    let (ws, _resp) = tokio_tungstenite::connect_async(request)
         .await.map_err(|e| format!("连接失败：{e}"))?;
-    ws.send(tokio_tungstenite::tungstenite::Message::text(encode_envelope(&Envelope::Hello(Hello {
+    let (mut sink, mut stream) = ws.split();
+    sink.send(tokio_tungstenite::tungstenite::Message::text(encode_envelope(&Envelope::Hello(Hello {
         hostname: hostname_string(), platform: std::env::consts::OS.to_string(),
     })))).await.map_err(|e| e.to_string())?;
-    // 等 hello_ack
-    match ws.next().await {
+    // 等 hello_ack（Connected 之前保持顺序执行）
+    match stream.next().await {
         Some(Ok(msg)) => {
             match parse_envelope(msg.to_text().unwrap_or("")) {
                 Some(Envelope::HelloAck) => {}
@@ -132,31 +135,59 @@ async fn connect_and_serve(
     }
     let _ = events.send(TunnelEvent::Connected).await;
     *established = true;
-    while let Some(msg) = ws.next().await {
+    // 出站队列 + select 循环：tool_request 在独立任务里执行，
+    // 执行期间 ping→pong 与其他出站消息不被阻塞（心跳不被长命令饿死）。
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Envelope>(16);
+    let reason = loop {
         if *shutdown.borrow() { return Ok(()); }
-        let msg = msg.map_err(|e| e.to_string())?;
-        let Some(env) = parse_envelope(msg.to_text().unwrap_or("")) else { continue };
-        match env {
-            Envelope::Ping => {
-                ws.send(tokio_tungstenite::tungstenite::Message::text(
-                    encode_envelope(&Envelope::Pong))).await.map_err(|e| e.to_string())?;
+        tokio::select! {
+            msg = stream.next() => {
+                // 流结束（None）也要 break，否则重连循环会卡死在死套接字上
+                let Some(msg) = msg else { break "连接关闭".to_string(); };
+                let msg = match msg { Ok(m) => m, Err(e) => break e.to_string() };
+                let Some(env) = parse_envelope(msg.to_text().unwrap_or("")) else { continue };
+                match env {
+                    Envelope::Ping => {
+                        let _ = tx.send(Envelope::Pong).await;
+                    }
+                    Envelope::ToolRequest(req) => {
+                        let exec = executor.clone();
+                        let tx = tx.clone();
+                        let events = events.clone();
+                        let id = req.id.clone();
+                        tokio::spawn(async move {
+                            let out = exec.execute(&req).await;
+                            // bash 超时（run_bash 杀掉子进程 → killed:true）→ 回 timeout 而非 ok 结果（spec §11）
+                            let resp = match out {
+                                Ok(result) if result.get("killed").and_then(Value::as_bool) == Some(true) =>
+                                    Envelope::ToolResponse(ToolResponse::Err {
+                                        id: id.clone(), error: ToolError {
+                                            code: ErrorCode::Timeout,
+                                            message: "命令执行超时被终止（killed）".into() } }),
+                                Ok(result) => Envelope::ToolResponse(ToolResponse::Ok { id: id.clone(), result }),
+                                Err((code, message)) => Envelope::ToolResponse(ToolResponse::Err {
+                                    id: id.clone(), error: ToolError { code, message } }),
+                            };
+                            let _ = tx.send(resp).await;
+                            let _ = events.send(TunnelEvent::Log(format!("{id} 完成"))).await;
+                        });
+                    }
+                    _ => {}
+                }
             }
-            Envelope::ToolRequest(req) => {
-                let exec = executor.clone();
-                let out = exec.execute(&req).await;
-                let resp = match out {
-                    Ok(result) => Envelope::ToolResponse(ToolResponse::Ok { id: req.id.clone(), result }),
-                    Err((code, message)) => Envelope::ToolResponse(ToolResponse::Err {
-                        id: req.id.clone(), error: ToolError { code, message } }),
-                };
-                ws.send(tokio_tungstenite::tungstenite::Message::text(
-                    encode_envelope(&resp))).await.map_err(|e| e.to_string())?;
-                let _ = events.send(TunnelEvent::Log(format!("{} 完成", req.id))).await;
+            Some(env) = rx.recv() => {
+                if let Err(e) = sink.send(tokio_tungstenite::tungstenite::Message::text(
+                    encode_envelope(&env))).await {
+                    break format!("发送失败：{e}");
+                }
             }
-            _ => {}
+            changed = shutdown.changed() => {
+                // changed() 报错 = shutdown 发送端已消失，永远不会再来信号 → 一并视为退出
+                if changed.is_err() || *shutdown.borrow_and_update() { return Ok(()); }
+            }
         }
-    }
-    Err("连接关闭".into())
+    };
+    Err(reason)
 }
 
 fn hostname_string() -> String {
