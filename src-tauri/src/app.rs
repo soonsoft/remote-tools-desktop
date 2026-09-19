@@ -257,6 +257,15 @@ pub fn run() {
             }
             Ok(())
         })
+        .on_window_event(|window, event| {
+            // v2 中最后一扇窗被关闭即销毁（此后 get_webview_window 恒为
+            // None，托盘两条唤起路径全部失效）。因此拦截关闭请求：
+            // 只隐藏窗口，进程驻留托盘，窗口可随时经托盘唤回。
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .on_menu_event(|app, event| match event.id().as_ref() {
             "show" => {
                 if let Some(w) = app.get_webview_window("main") {
@@ -271,7 +280,11 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("tauri 构建失败")
         .run(|_app, event| match event {
-            // 主窗可关不影响运行：窗口全关（code=None）时阻止退出，驻留托盘。
+            // 主窗可关不影响运行。主防线是 on_window_event 的 prevent_close
+            // + hide（窗口保持存活、可随时唤回）；此处 prevent_exit 为
+            // 保险带：即便窗口被程序性销毁（code=None 的退出请求），进程
+            // 仍驻留托盘而非退出。托盘菜单「退出」（app.exit(0)，code=Some）
+            // 不受影响，正常走硬退出。
             RunEvent::ExitRequested { code, api, .. } => {
                 if code.is_none() {
                     api.prevent_exit();

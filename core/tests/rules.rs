@@ -84,6 +84,35 @@ fn session_allow_short_circuits_confirm() {
     assert_eq!(decide(ToolName::Bash, &json!({"command":"rm -rf build"}), &cfg("/tmp/d"), &s), Decision::Allow);
 }
 
+// 会话规则不可绕过围栏与 override（spec §8 ①：白名单外 → path_denied 不弹窗）
+#[test]
+fn session_allow_does_not_bypass_path_fence() {
+    let mut s = SessionRules::default();
+    s.insert_allow(ToolName::Write, false);
+    match decide(ToolName::Write, &json!({"path":"../../escape.ts","content":"x"}), &cfg("/tmp/d"), &s) {
+        Decision::Deny { code, .. } => {
+            use remote_tools_core::envelope::ErrorCode;
+            assert_eq!(code, ErrorCode::PathDenied);
+        }
+        d => panic!("expected path_denied, got {d:?}"),
+    }
+}
+
+#[test]
+fn session_allow_does_not_bypass_override_deny() {
+    let mut c = cfg("/tmp/d");
+    c.tool_overrides.insert("client__bash".into(), "deny".into());
+    let mut s = SessionRules::default();
+    s.insert_allow(ToolName::Bash, false);
+    match decide(ToolName::Bash, &json!({"command":"echo hi"}), &c, &s) {
+        Decision::Deny { code, .. } => {
+            use remote_tools_core::envelope::ErrorCode;
+            assert_eq!(code, ErrorCode::DeniedByRule);
+        }
+        d => panic!("expected denied_by_rule, got {d:?}"),
+    }
+}
+
 #[test]
 fn within_root_semantics() {
     let root = Path::new("/tmp/d");
