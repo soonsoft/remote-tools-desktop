@@ -2,7 +2,7 @@
 resolver = "2"
 members = [
     "core",
-    # "src-tauri", # created in Task 7 — uncomment then
+    "src-tauri",
 ]
 
 [workspace.package]

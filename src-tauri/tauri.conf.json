@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "remote-tools",
+  "version": "0.1.0",
+  "identifier": "com.remotetools.desktop",
+  "build": { "frontendDist": "../ui" },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "remote-tools",
+        "width": 720,
+        "height": 520,
+        "visible": false
+      }
+    ]
+  },
+  "bundle": { "active": true, "targets": ["msi", "app"] }
+}

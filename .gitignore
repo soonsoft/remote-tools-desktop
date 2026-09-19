@@ -1,3 +1,6 @@
 /target
 node_modules/
 .DS_Store
+# Task 7：tauri 构建期生成物（代码生成图标 + 权限 schema），不入库
+src-tauri/gen/
+src-tauri/icons/
