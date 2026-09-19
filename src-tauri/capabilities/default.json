@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗默认能力：核心事件（listen/emit）与只读窗口信息 + 自绘标题栏所需的窗口控制（最小化/最大化/隐藏/拖拽）+ 剪贴板写（复制令牌）。",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-start-dragging",
+    "clipboard-manager:allow-write-text"
+  ]
+}

@@ -1,1 +1,187 @@
-<!doctype html><html><body>remote-tools</body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>remote-tools · 本地关卡</title>
+<link rel="stylesheet" href="styles.css">
+<script>
+/* 主题先于首帧：记忆为亮色则提前挂 data-theme，避免暗→亮闪烁（暗色 = 无 attr，默认）。
+   与 ui/main.js 的 applyTheme 同一约定：documentElement.dataset.theme + localStorage["rt-theme"]。 */
+try { if (localStorage.getItem("rt-theme") === "light") document.documentElement.dataset.theme = "light"; } catch (e) {}
+</script>
+</head>
+<body data-state="log">
+
+  <!-- ① 清玻璃框（窗体本体；圆角/投影由 OS 提供） -->
+  <section class="app" aria-label="remote-tools 本地关卡">
+
+    <!-- 标题栏：玻璃一体，可拖拽（data-tauri-drag-region）；右为窗口控制 -->
+    <header class="titlebar" data-tauri-drag-region>
+      <!-- 闸门徽记（§10.5）：圆角方 + 门拱镂空（evenodd 真镂空，透出玻璃，不引用布景 token） -->
+      <svg class="gate" data-tauri-drag-region width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" fill="currentColor" d="M8 1.5h8a6.5 6.5 0 0 1 6.5 6.5v8a6.5 6.5 0 0 1-6.5 6.5H8A6.5 6.5 0 0 1 1.5 15.5v-8A6.5 6.5 0 0 1 8 1.5Zm0 18.5v-6.2a4 4 0 0 1 8 0V20H8Z"/></svg>
+      <span class="tb-name" data-tauri-drag-region>remote-tools</span>
+      <span class="tb-sub" data-tauri-drag-region>本地关卡</span>
+      <div class="tb-controls">
+        <button type="button" class="tb-btn tb-min" id="win-min" aria-label="最小化"><span></span></button>
+        <button type="button" class="tb-btn tb-max" id="win-max" aria-label="最大化或还原"><span></span></button>
+        <button type="button" class="tb-btn tb-close" id="win-hide" aria-label="隐藏到托盘">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="app-body">
+      <!-- §7 侧栏：导航钮 44×44 + 底部 LED -->
+      <nav class="rail" aria-label="主导航">
+        <button type="button" class="nav-btn nav-log" id="nav-log" aria-label="指令流水">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="5.5" x2="16" y2="5.5"/><line x1="4" y1="10" x2="12.5" y2="10"/><line x1="4" y1="14.5" x2="16" y2="14.5"/></svg>
+        </button>
+        <button type="button" class="nav-btn nav-settings" id="nav-settings" aria-label="设置">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="6" x2="16" y2="6"/><circle cx="12.5" cy="6" r="2.4" fill="currentColor" stroke="none"/><line x1="4" y1="14" x2="16" y2="14"/><circle cx="7.5" cy="14" r="2.4" fill="currentColor" stroke="none"/></svg>
+        </button>
+        <span class="led" id="rail-led" aria-hidden="true"></span>
+      </nav>
+
+      <div class="viewwrap">
+        <div class="viewstage">
+
+          <!-- ① 指令流水：状态横幅 + 流水行 -->
+          <div class="view view-log">
+            <div class="banner">
+              <div class="conn">
+                <span class="led" id="banner-led" aria-hidden="true"></span>
+                <div>
+                  <div class="st" id="conn-st">未连接</div>
+                  <div class="url" id="conn-url">尚未配置服务器</div>
+                  <div class="rsn" id="conn-rsn" hidden></div>
+                </div>
+              </div>
+              <div class="stats">
+                <div class="tiles">
+                  <div class="tile t-g"><b id="t-pass">0</b><i>次放行</i></div>
+                  <div class="tile t-y"><b id="t-man">0</b><i>次确认</i></div>
+                  <div class="tile t-f"><b id="t-fail">0</b><i>次未通过</i></div>
+                </div>
+                <div class="segbar" id="segbar" role="img" aria-label="最近指令构成：放行、确认、未通过" hidden>
+                  <span class="s1"></span><span class="s2"></span><span class="s3"></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="log-head">
+              <h2>指令流水</h2>
+              <span class="order">按时间倒序</span>
+              <span class="cnt" id="log-cnt"></span>
+            </div>
+
+            <div class="loglist" id="loglist">
+              <p class="empty">暂无指令 — 连接服务器后，远方来的每一条操作都会在这里留档。</p>
+            </div>
+          </div>
+
+          <!-- ② 设置页 -->
+          <div class="view view-settings">
+            <div class="set-head"><h2>设置</h2><span class="hint">本机关卡配置</span></div>
+            <form class="form" id="settings-form">
+              <div class="field">
+                <label for="f-url">服务器地址</label>
+                <input class="input" id="f-url" spellcheck="false" placeholder="ws://server.internal:8787">
+              </div>
+
+              <div class="grid2">
+                <div class="field">
+                  <label for="f-token">配对令牌</label>
+                  <div class="tokrow">
+                    <input class="input" id="f-token" spellcheck="false">
+                    <button type="button" class="ibtn" id="copy-token" aria-label="复制令牌"></button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="f-max">maxOutputChars</label>
+                  <div class="relwrap">
+                    <input class="input" id="f-max" inputmode="numeric">
+                    <span class="unit">字符</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>Shell</label>
+                <div class="segtrack" id="shell-seg" role="radiogroup" aria-label="Shell 选择">
+                  <button type="button" class="seg" data-shell="">默认</button>
+                  <button type="button" class="seg" data-shell="powershell">powershell</button>
+                  <button type="button" class="seg" data-shell="pwsh">pwsh</button>
+                  <button type="button" class="seg" data-shell="cmd">cmd</button>
+                  <button type="button" class="seg" data-shell="sh">sh</button>
+                  <button type="button" class="seg" data-shell="__custom">自定义…</button>
+                </div>
+                <input class="input shell-custom" id="f-shell-custom" spellcheck="false" placeholder="自定义 shell 可执行文件路径" hidden>
+              </div>
+
+              <div class="field">
+                <label>allowRoots（允许访问的目录）</label>
+                <div class="roots" id="roots"></div>
+                <div class="rootadd">
+                  <input class="input" id="root-input" spellcheck="false" placeholder="输入目录后回车，如 D:\Code 或 ~/projects">
+                  <button type="button" class="root-add" id="root-add">添加目录</button>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>外观</label>
+                <div class="segtrack" id="theme-seg" role="radiogroup" aria-label="主题选择">
+                  <button type="button" class="seg" data-theme-opt="dark">暗色</button>
+                  <button type="button" class="seg" data-theme-opt="light">亮色</button>
+                </div>
+              </div>
+
+              <div class="saverow">
+                <button type="submit" class="btn-save" id="save">保存</button>
+                <span class="note" id="save-note">
+                  <span class="ico" id="save-note-ico"></span>
+                  <span id="save-note-txt">重启应用生效</span>
+                </span>
+              </div>
+            </form>
+          </div>
+
+        </div>
+        <!-- §7 底条：高 34，纯玻璃节奏条，无内容 -->
+        <div class="win-foot"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 确认弹窗：全场最亮焦点（--glass-strong）；顶部色带头 红=危险 / 黄=普通 -->
+  <div class="overlay" id="confirm-overlay" role="alertdialog" aria-modal="true" aria-labelledby="c-title">
+    <div class="modal" id="confirm-modal">
+      <div class="m-head" id="c-head">
+        <span class="m-ico" id="c-ico"></span>
+        <div>
+          <div class="t" id="c-title">需要确认</div>
+          <div class="s" id="c-sub"></div>
+        </div>
+        <span class="rule" id="c-rule"></span>
+      </div>
+      <div class="m-body">
+        <div class="frow"><span class="flabel">来自工具</span><span class="chip" id="c-tool"></span></div>
+        <div class="cblock" id="c-block"><div class="cline" id="c-summary"></div></div>
+        <div class="mnote" id="c-note" hidden>
+          <span class="ico" id="c-note-ico"></span>
+          <span id="c-note-txt"></span>
+        </div>
+        <div class="btns">
+          <div class="btnrow">
+            <button type="button" class="btn btn-g" id="c-once">允许一次</button>
+            <button type="button" class="btn btn-b" id="c-session">本会话内允许同类</button>
+          </div>
+          <button type="button" class="btn btn-r" id="c-deny">拒绝</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

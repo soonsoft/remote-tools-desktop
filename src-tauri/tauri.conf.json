@@ -5,13 +5,22 @@
   "identifier": "com.remotetools.desktop",
   "build": { "frontendDist": "../ui" },
   "app": {
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true,
     "windows": [
       {
         "label": "main",
         "title": "remote-tools",
-        "width": 720,
-        "height": 520,
-        "visible": false
+        "width": 960,
+        "height": 640,
+        "minWidth": 760,
+        "minHeight": 520,
+        "center": true,
+        "visible": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": true,
+        "windowEffects": { "effects": ["acrylic"] }
       }
     ]
   },
