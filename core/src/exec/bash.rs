@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellKind {
     Powershell, Pwsh, Cmd, Sh, Custom(String),
 }
