@@ -113,6 +113,21 @@ fn session_allow_does_not_bypass_override_deny() {
     }
 }
 
+// override "auto" 只跳过确认，不豁免围栏（spec §8 ①：白名单外 → path_denied）
+#[test]
+fn override_auto_does_not_bypass_path_fence() {
+    let mut c = cfg("/tmp/d");
+    c.tool_overrides.insert("client__read".into(), "auto".into());
+    let s = SessionRules::default();
+    match decide(ToolName::Read, &json!({"path":"../../escape.ts"}), &c, &s) {
+        Decision::Deny { code, .. } => {
+            use remote_tools_core::envelope::ErrorCode;
+            assert_eq!(code, ErrorCode::PathDenied);
+        }
+        d => panic!("expected path_denied, got {d:?}"),
+    }
+}
+
 #[test]
 fn within_root_semantics() {
     let root = Path::new("/tmp/d");

@@ -54,19 +54,12 @@ pub fn args_path(args: &Value) -> Option<String> {
     args.get("path").and_then(Value::as_str).map(String::from)
 }
 
-/// 决策链：工具 override（deny/auto）→ 路径围栏 → 会话规则 → 分类（含危险模式）。
-/// 顺序即安全边界（spec §8 ①）：override 拒绝与 allowRoots 围栏不可被
-/// 「本会话内允许同类」绕过——围栏白名单外一律 path_denied 不弹窗。
+/// 决策链：路径围栏 → 工具 override（deny/auto）→ 会话规则 → 分类（含危险模式）。
+/// 顺序即安全边界（spec §8 ①）：围栏最先且不可绕过——allowRoots 白名单外
+/// 一律 path_denied 不弹窗；override "deny"/"auto" 只影响确认策略，
+/// "auto" 不豁免围栏；「本会话内允许同类」两者皆不可绕过。
 pub fn decide(tool: ToolName, args: &Value, cfg: &RulesConfig, session: &SessionRules) -> Decision {
     let danger = is_dangerous(args, cfg);
-    match cfg.tool_overrides.get(tool.wire()).map(String::as_str) {
-        Some("deny") => return Decision::Deny {
-            code: ErrorCode::DeniedByRule,
-            reason: format!("{} 被客户端规则拒绝；建议换一种方式或询问用户调整规则", tool.wire()),
-        },
-        Some("auto") => return Decision::Allow,
-        _ => {}
-    }
     // 路径围栏：文件类工具（read/write/edit/grep/glob 的 path 参数）
     if let Some(p) = args_path(args) {
         let target = canonical_against_roots(&p, cfg);
@@ -77,6 +70,14 @@ pub fn decide(tool: ToolName, args: &Value, cfg: &RulesConfig, session: &Session
                 reason: format!("目标路径不在白名单内：{p}"),
             },
         }
+    }
+    match cfg.tool_overrides.get(tool.wire()).map(String::as_str) {
+        Some("deny") => return Decision::Deny {
+            code: ErrorCode::DeniedByRule,
+            reason: format!("{} 被客户端规则拒绝；建议换一种方式或询问用户调整规则", tool.wire()),
+        },
+        Some("auto") => return Decision::Allow,
+        _ => {}
     }
     if session.allows(tool, danger) {
         return Decision::Allow;
