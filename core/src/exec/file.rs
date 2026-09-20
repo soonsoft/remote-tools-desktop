@@ -1,21 +1,33 @@
 use crate::envelope::ErrorCode;
 use crate::rules::within_root;
 use serde_json::{json, Value};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-/// 路径围栏在执行器侧二次强制——规则层放行后仍守门：词法规范化消除 `..`/`.`，
-/// 结果必须仍落在 root 内，否则 `path_denied`。
-pub fn resolve_in_root(root: &Path, raw: &str) -> Result<PathBuf, (ErrorCode, String)> {
+/// 词法规范化：消除 `..`/`.`（绝对路径与盘符前缀按 Component 原样保留）。
+fn lexical_normalize(p: PathBuf) -> PathBuf {
     let mut out = PathBuf::new();
-    for c in root.join(raw).components() {
+    for c in p.components() {
         match c {
             std::path::Component::ParentDir => { out.pop(); }
             std::path::Component::CurDir => {}
             other => out.push(other.as_os_str()),
         }
     }
-    if within_root(root, &out) { Ok(out) }
-    else { Err((ErrorCode::PathDenied, format!("路径越出根目录：{raw}"))) }
+    out
+}
+
+/// 多根路径围栏在执行器侧二次强制——规则层放行后仍守门：对每个 allowRoot 做
+/// `root.join(raw)` 的词法规范化，返回**第一个**规范化后仍落在该根内的
+/// (规范化目标, 命中根)；没有任何根命中 → `path_denied`。
+/// 绝对路径经 join 后替换基底，天然只可能命中其真正所属的根。
+pub fn resolve_in_root(
+    roots: &[PathBuf], raw: &str,
+) -> Result<(PathBuf, PathBuf), (ErrorCode, String)> {
+    for root in roots {
+        let out = lexical_normalize(root.join(raw));
+        if within_root(root, &out) { return Ok((out, root.clone())); }
+    }
+    Err((ErrorCode::PathDenied, format!("路径越出所有允许根：{raw}")))
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (ErrorCode, String)> {
@@ -23,8 +35,8 @@ fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (ErrorCode, String
         .ok_or((ErrorCode::BadArgs, format!("缺少字符串参数 {key}")))
 }
 
-pub fn read_file(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
-    let path = resolve_in_root(root, str_arg(args, "path")?)?;
+pub fn read_file(roots: &[PathBuf], args: &Value) -> Result<Value, (ErrorCode, String)> {
+    let (path, _) = resolve_in_root(roots, str_arg(args, "path")?)?;
     let content = std::fs::read_to_string(&path)
         .map_err(|e| (ErrorCode::ExecError, format!("读取失败 {path:?}：{e}")))?;
     let lines: Vec<&str> = content.split('\n').collect();
@@ -37,8 +49,8 @@ pub fn read_file(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)
     Ok(json!({ "path": path.to_string_lossy(), "content": slice.join("\n"), "truncated": false }))
 }
 
-pub fn write_file(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
-    let path = resolve_in_root(root, str_arg(args, "path")?)?;
+pub fn write_file(roots: &[PathBuf], args: &Value) -> Result<Value, (ErrorCode, String)> {
+    let (path, _) = resolve_in_root(roots, str_arg(args, "path")?)?;
     let content = str_arg(args, "content")?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| (ErrorCode::ExecError, format!("建目录失败：{e}")))?;
@@ -47,8 +59,8 @@ pub fn write_file(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String
     Ok(json!({ "written": true, "bytes": content.len() }))
 }
 
-pub fn edit_file(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
-    let path = resolve_in_root(root, str_arg(args, "path")?)?;
+pub fn edit_file(roots: &[PathBuf], args: &Value) -> Result<Value, (ErrorCode, String)> {
+    let (path, _) = resolve_in_root(roots, str_arg(args, "path")?)?;
     let old_text = str_arg(args, "old_text")?;
     let new_text = str_arg(args, "new_text")?;
     let src = std::fs::read_to_string(&path)

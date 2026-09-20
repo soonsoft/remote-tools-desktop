@@ -41,6 +41,15 @@ impl ConfirmBridge {
         tx.send(action).map_err(|_| "接收端已取消".to_string())
     }
 
+    /// 断线清扫（spec §11）：所有待确认请求一律按 Deny 送达并清空——
+    /// 在途确认不再悬空，托盘琥珀态（is_empty 判据）随之解除。
+    pub fn deny_all(&self) {
+        let mut map = self.pending.lock().unwrap();
+        for (_, tx) in map.drain() {
+            let _ = tx.send(ConfirmAction::Deny);
+        }
+    }
+
     /// 是否还有待确认项（托盘琥珀态的判据）。
     pub fn is_empty(&self) -> bool {
         self.pending.lock().unwrap().is_empty()

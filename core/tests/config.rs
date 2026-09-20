@@ -58,3 +58,17 @@ fn truncate_spills_oversized_output() {
     truncate_result(&mut ok, 100, &dir, "req_OK");
     assert!(ok.get("truncated").is_none());
 }
+
+/// 落盘失败（spill 目录位置被一个文件占据 → create_dir_all 必败）不得关闭
+/// 上限：仍截断头部 + truncated:true，无 spillPath，附 spillFailed:true。
+#[test]
+fn spill_failure_still_truncates_and_flags() {
+    let blocker = std::env::temp_dir().join(format!("rt-spill-fail-{}", ulid::Ulid::new()));
+    std::fs::write(&blocker, "我是文件，不是目录").unwrap();
+    let mut v = json!({ "stdout": "y".repeat(150), "exitCode": 0 });
+    truncate_result(&mut v, 100, &blocker, "req_FAIL");
+    assert_eq!(v["truncated"], json!(true));
+    assert_eq!(v["spillFailed"], json!(true));
+    assert!(v.get("spillPath").is_none());
+    assert!(v["stdout"].as_str().unwrap().len() <= 100);
+}

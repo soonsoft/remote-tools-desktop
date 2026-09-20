@@ -17,6 +17,4 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "proce
 tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 regex = "1"
-walkdir = "2"
-thiserror = "2"
 ulid = "1"

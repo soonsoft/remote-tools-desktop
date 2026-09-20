@@ -82,6 +82,10 @@ impl Executor for UiExecutor {
         match decision {
             Decision::Allow => {}
             Decision::Confirm { reason, danger } => {
+                // 先登记再广播：confirm-request 若先于登记送达（UI 极快裁决/
+                // 自动化点击），resolve 会扑空。登记 → 广播 → 刷托盘。
+                let (tx, rx) = oneshot::channel();
+                self.bridge.register(req.id.clone(), tx);
                 let _ = self.app.emit(
                     "confirm-request",
                     serde_json::json!({
@@ -90,8 +94,6 @@ impl Executor for UiExecutor {
                         "danger": danger, "reason": reason,
                     }),
                 );
-                let (tx, rx) = oneshot::channel();
-                self.bridge.register(req.id.clone(), tx);
                 refresh_tray(&self.app, &self.state, &self.bridge); // 琥珀：待确认
                 match rx.await {
                     Ok(ConfirmAction::Deny) => {
@@ -235,6 +237,9 @@ pub fn run() {
                             }
                             TunnelEvent::Disconnected(reason) => {
                                 state.session_rules.lock().await.clear();
+                                // 断线清扫（spec §11）：在途待确认一律拒绝，
+                                // 请求方收到 denied_by_user，托盘琥珀态解除。
+                                bridge.deny_all();
                                 state.connected.store(false, Ordering::Relaxed);
                                 let _ = handle.emit(
                                     "tunnel-status",

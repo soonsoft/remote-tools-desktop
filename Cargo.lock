@@ -2767,12 +2767,10 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
- "thiserror 2.0.20",
  "tokio",
  "tokio-tungstenite",
  "tungstenite",
  "ulid",
- "walkdir",
 ]
 
 [[package]]
@@ -2787,7 +2785,6 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-clipboard-manager",
  "tokio",
- "ulid",
 ]
 
 [[package]]

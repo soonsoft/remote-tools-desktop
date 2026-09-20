@@ -62,18 +62,24 @@ impl AppConfig {
     }
 }
 
-/// 超限截断 + 落盘（spec §6 修订：客户端执行截断；spill 目录 = 目标 allowRoot 下 .remote-tools/）。
+/// 超限截断 + 落盘（spec §6 修订：客户端执行截断；spill 目录 = 命中 allowRoot 下 .remote-tools/）。
+/// 落盘失败**不得**回退为"无上限"：仍然截断头部、标记 `truncated:true`，
+/// 附 `spillFailed:true` 并省略 spillPath——上限永不因 IO 失败而失效。
 pub fn truncate_result(result: &mut Value, max_chars: usize, spill_dir: &Path, request_id: &str) {
     for key in ["stdout", "stderr", "content"] {
         let Some(s) = result.get(key).and_then(Value::as_str) else { continue };
         if s.chars().count() <= max_chars { continue; }
         let spill_path = spill_dir.join(format!("{request_id}.txt"));
-        if std::fs::create_dir_all(spill_dir).is_ok() && std::fs::write(&spill_path, s).is_ok() {
-            let head: String = s.chars().take(max_chars).collect();
-            if let Some(obj) = result.as_object_mut() {
-                obj.insert(key.to_string(), Value::String(head));
-                obj.insert("truncated".into(), Value::Bool(true));
+        let spilled = std::fs::create_dir_all(spill_dir).is_ok()
+            && std::fs::write(&spill_path, s).is_ok();
+        let head: String = s.chars().take(max_chars).collect();
+        if let Some(obj) = result.as_object_mut() {
+            obj.insert(key.to_string(), Value::String(head));
+            obj.insert("truncated".into(), Value::Bool(true));
+            if spilled {
                 obj.insert("spillPath".into(), Value::String(spill_path.to_string_lossy().into_owned()));
+            } else {
+                obj.insert("spillFailed".into(), Value::Bool(true));
             }
         }
         return; // 单字段截断即整结果标记

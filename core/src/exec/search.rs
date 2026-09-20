@@ -1,8 +1,7 @@
 use crate::envelope::ErrorCode;
 use crate::exec::file::resolve_in_root;
-use crate::rules::within_root;
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// 深度 6、条目 2000 双上限的词法遍历；跳过 node_modules/.git。
 fn walk_files(root: &Path, depth: usize, out: &mut Vec<std::path::PathBuf>) {
@@ -24,8 +23,7 @@ fn glob_to_regex(g: &str) -> regex::Regex {
     while let Some(c) = chars.next() {
         match c {
             '*' => {
-                if chars.peek() == Some(&'*') {
-                    chars.next();
+                if chars.peek() == Some(&'*') { chars.next();
                     if chars.peek() == Some(&'/') { chars.next(); }
                     re.push_str(".*");
                 } else { re.push_str("[^/]*"); }
@@ -38,14 +36,17 @@ fn glob_to_regex(g: &str) -> regex::Regex {
     regex::Regex::new(&re).expect("glob regex")
 }
 
-pub fn grep(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
-    let base = match args.get("path").and_then(Value::as_str) {
-        Some(p) => resolve_in_root(root, p)?,
-        None => root.to_path_buf(),
-    };
-    if !within_root(root, &base) {
-        return Err((ErrorCode::PathDenied, "搜索根越界".into()));
+/// 搜索基底：有 `path` 参数 → 相对/绝对解析到命中根；无 → 第一个根。
+fn search_base(roots: &[PathBuf], args: &Value) -> Result<PathBuf, (ErrorCode, String)> {
+    match args.get("path").and_then(Value::as_str) {
+        Some(p) => Ok(resolve_in_root(roots, p)?.0),
+        None => roots.first().cloned()
+            .ok_or((ErrorCode::PathDenied, "客户端未配置 allowRoots".into())),
     }
+}
+
+pub fn grep(roots: &[PathBuf], args: &Value) -> Result<Value, (ErrorCode, String)> {
+    let base = search_base(roots, args)?;
     let pattern = args.get("pattern").and_then(Value::as_str)
         .ok_or((ErrorCode::BadArgs, "缺少 pattern".into()))?;
     let re = regex::Regex::new(pattern).map_err(|e| (ErrorCode::BadArgs, format!("正则不合法：{e}")))?;
@@ -55,7 +56,10 @@ pub fn grep(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
     let mut matches = Vec::new();
     'outer: for f in files {
         if let Some(re_f) = &filter {
-            if !re_f.is_match(&f.to_string_lossy()) { continue; }
+            // glob 针对相对 base 的斜杠路径匹配（与 glob_search 同一约定），
+            // 否则 `src/*.ts` 永远匹配不到绝对路径 `D:\root\src\one.ts`。
+            let rel = f.strip_prefix(&base).unwrap_or(&f).to_string_lossy().replace('\\', "/");
+            if !re_f.is_match(&rel) { continue; }
         }
         let Ok(meta) = std::fs::metadata(&f) else { continue };
         if meta.len() > 2_000_000 { continue; }
@@ -71,11 +75,8 @@ pub fn grep(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
     Ok(json!({ "matches": matches, "truncated": truncated }))
 }
 
-pub fn glob_search(root: &Path, args: &Value) -> Result<Value, (ErrorCode, String)> {
-    let base = match args.get("path").and_then(Value::as_str) {
-        Some(p) => resolve_in_root(root, p)?,
-        None => root.to_path_buf(),
-    };
+pub fn glob_search(roots: &[PathBuf], args: &Value) -> Result<Value, (ErrorCode, String)> {
+    let base = search_base(roots, args)?;
     let pattern = args.get("pattern").and_then(Value::as_str)
         .ok_or((ErrorCode::BadArgs, "缺少 pattern".into()))?;
     let re = glob_to_regex(pattern);

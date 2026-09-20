@@ -136,3 +136,26 @@ fn within_root_semantics() {
     assert!(!within_root(root, Path::new("/tmp/d-evil/x.ts")));
     assert!(!within_root(root, Path::new("/tmp/../etc/x")));
 }
+
+// Windows 盘符/路径段大小写的围栏语义（锁定 std 实际行为，防止日后无意识改动）：
+// - 盘符仅大小写不同（d: vs D:）：std 对 Disk 前缀的比较本身大小写不敏感，
+//   两者是同一物理卷路径、不构成逃逸 → 放行（终审简报猜测的 fail-closed 与
+//   std 语义不符，此处如实锁定）；
+// - 路径段大小写不同（\ALLOWED\ vs \allowed\）：strip_prefix 失败 →
+//   fail-closed path_denied（不猜测 NTFS 大小写折叠）。
+#[test]
+#[cfg(windows)]
+fn drive_letter_and_segment_case_fence_semantics() {
+    let s = SessionRules::default();
+    assert_eq!(
+        decide(ToolName::Read, &json!({"path":"d:\\allowed\\a.txt"}), &cfg("D:\\allowed"), &s),
+        Decision::Allow
+    );
+    match decide(ToolName::Read, &json!({"path":"D:\\ALLOWED\\a.txt"}), &cfg("D:\\allowed"), &s) {
+        Decision::Deny { code, .. } => {
+            use remote_tools_core::envelope::ErrorCode;
+            assert_eq!(code, ErrorCode::PathDenied);
+        }
+        d => panic!("expected path_denied, got {d:?}"),
+    }
+}
