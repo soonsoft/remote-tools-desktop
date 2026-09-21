@@ -55,73 +55,26 @@ fn led_pixel(x: u32, y: u32) -> [u8; 4] {
 }
 
 /// 32×32 RGBA PNG（zlib stored 块，无压缩；仅作 codegen 默认窗口图标）。
+/// 用 `png` crate 正规编码（编码/解码同源）。手搓 stored-zlib 流曾因
+/// 最后一块不置 BFINAL 导致 tauri-codegen 的 next_row() 静默吞错、嵌入
+/// 空 RGBA 图标，运行时 tao 校验 panic（2026-09-21 验收首跑实锤）。
 fn generated_png() -> Vec<u8> {
     const S: u32 = 32;
-    let mut raw = Vec::with_capacity((S * (1 + S * 4)) as usize);
+    let mut rgba = Vec::with_capacity((S * S * 4) as usize);
     for y in 0..S {
-        raw.push(0); // filter: None
         for x in 0..S {
-            raw.extend_from_slice(&led_pixel(x, y));
+            rgba.extend_from_slice(&led_pixel(x, y));
         }
     }
-    let mut out = vec![0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a];
-    let mut ihdr = Vec::with_capacity(13);
-    ihdr.extend_from_slice(&S.to_be_bytes());
-    ihdr.extend_from_slice(&S.to_be_bytes());
-    ihdr.extend_from_slice(&[8, 6, 0, 0, 0]); // 8bit RGBA
-    push_chunk(&mut out, b"IHDR", &ihdr);
-    push_chunk(&mut out, b"IDAT", &zlib_stored(&raw));
-    push_chunk(&mut out, b"IEND", &[]);
+    let mut out = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut out, S, S);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        let mut writer = encoder.write_header().expect("png header");
+        writer.write_image_data(&rgba).expect("png image data");
+    }
     out
-}
-
-fn push_chunk(out: &mut Vec<u8>, tag: &[u8; 4], data: &[u8]) {
-    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
-    let mut crc_input = Vec::with_capacity(4 + data.len());
-    crc_input.extend_from_slice(tag);
-    crc_input.extend_from_slice(data);
-    let crc = crc32(&crc_input);
-    out.extend_from_slice(tag);
-    out.extend_from_slice(data);
-    out.extend_from_slice(&crc.to_be_bytes());
-}
-
-/// zlib 流：0x78 0x01 头 + stored deflate 块 + adler32。
-fn zlib_stored(raw: &[u8]) -> Vec<u8> {
-    let mut out = vec![0x78, 0x01];
-    if raw.is_empty() {
-        out.extend_from_slice(&[0x01, 0x00, 0x00, 0xff, 0xff]);
-    }
-    for chunk in raw.chunks(65_535) {
-        out.push(u8::from(chunk.len() == 65_535));
-        let len = chunk.len() as u16;
-        out.extend_from_slice(&len.to_le_bytes());
-        out.extend_from_slice(&(!len).to_le_bytes());
-        out.extend_from_slice(chunk);
-    }
-    out.extend_from_slice(&adler32(raw).to_be_bytes());
-    out
-}
-
-fn adler32(data: &[u8]) -> u32 {
-    let (mut a, mut b) = (1u32, 0u32);
-    for &byte in data {
-        a = (a + u32::from(byte)) % 65_521;
-        b = (b + a) % 65_521;
-    }
-    (b << 16) | a
-}
-
-fn crc32(data: &[u8]) -> u32 {
-    let mut crc: u32 = 0xffff_ffff;
-    for &byte in data {
-        crc ^= u32::from(byte);
-        for _ in 0..8 {
-            let mask = (crc & 1).wrapping_neg();
-            crc = (crc >> 1) ^ (0xedb8_8320 & mask);
-        }
-    }
-    !crc
 }
 
 /// 32×32 灰色圆点 `.ico`（BGRA、自底向上、全零 AND 掩码）。

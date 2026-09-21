@@ -2778,6 +2778,7 @@ name = "remote-tools-desktop"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "png 0.17.16",
  "remote-tools-core",
  "serde",
  "serde_json",
