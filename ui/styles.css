@@ -168,10 +168,13 @@ body[data-state="settings"] .nav-settings {
 .viewstage { flex: 1; position: relative; min-height: 0; background: var(--card); border-radius: 16px; overflow: hidden; }
 .win-foot { height: 34px; flex: none; }      /* 纯玻璃节奏条，无内容（§7） */
 .view { position: absolute; inset: 0; display: none; overflow: auto; }
+/* Chromium 实测（2026-09-21 probe）：flex 列滚动容器的 padding-bottom 不计入
+   滚动区（溢出子项穿透）——底部间距改由末端占位项承担，必然参与滚动布局。 */
+.view::after { content: ""; flex: none; height: 14px; }
 body[data-state="log"] .view-log { display: flex; }
 body[data-state="settings"] .view-settings { display: flex; }
-.view-log { flex-direction: column; padding: 18px 20px 14px; gap: 12px; }
-.view-settings { flex-direction: column; padding: 18px 22px 14px; gap: 13px; }
+.view-log { flex-direction: column; padding: 18px 20px 0; gap: 12px; }
+.view-settings { flex-direction: column; padding: 18px 22px 0; gap: 13px; }
 
 /* ---------- ③ 状态横幅（糖果卡：surface 实底 + 4px 硬阴影；§4 其余一律 4px） ---------- */
 .banner {
@@ -218,7 +221,9 @@ body[data-state="settings"] .view-settings { display: flex; }
 .log-head h2 { font-size: 15px; font-weight: 800; }
 .log-head .order { font-size: 12px; color: var(--ink-3); border: 1px solid var(--line-soft); border-radius: 999px; padding: 2px 9px; font-weight: 600; }
 .log-head .cnt { margin-left: auto; font-size: 12px; color: var(--ink-3); }
-.loglist { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; margin-top: 10px; padding-bottom: 4px; }
+/* flex:none——盒子随内容自然增高，使 .view 的溢出布局包含末端的 ::after 占位
+   （flex:1 会把盒子压回视口内、行变为可见溢出，::after 便永远落在视口底缘） */
+.loglist { flex: none; display: flex; flex-direction: column; gap: 12px; margin-top: 10px; padding-bottom: 4px; }
 .loglist .empty { color: var(--ink-3); font-size: 13.5px; text-align: center; padding: 28px 4px; }
 /* ③ 流水行（糖果卡实底；行 14 圆角；§4 控件 3px 硬阴影） */
 .row {
