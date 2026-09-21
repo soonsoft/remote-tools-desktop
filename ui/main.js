@@ -470,6 +470,8 @@ setStatus(false, "");
 if (invoke) {
   /* recent_logs() 已是时间倒序（新→旧）；renderLog 是头部插入，故需倒着回放才能在页面上保持新→旧 */
   invoke("recent_logs").then((ls) => { for (let i = (ls || []).length - 1; i >= 0; i--) renderLog(ls[i]); }).catch(() => {});
+  // 启动补拉当前连接状态——tunnel-status 事件可能在 listener 就绪前发出（竞态实锤 2026-09-21）
+  invoke("get_status").then((s) => { if (s && typeof s.connected === "boolean") setStatus(s.connected, s.reason); }).catch(() => {});
   loadConfig();
 } else {
   console.error("window.__TAURI__ 命令 API 不可用：检查 tauri.conf withGlobalTauri / capabilities");

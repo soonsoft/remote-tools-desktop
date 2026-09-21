@@ -47,3 +47,13 @@ pub fn recent_logs(state: State<'_, Arc<AppState>>) -> Vec<LogEntry> {
     let logs = state.logs.lock().unwrap();
     logs.iter().rev().take(100).cloned().collect()
 }
+
+/// 当前隧道状态（webview 启动补拉——`tunnel-status` 事件可能在 listener
+/// 就绪前发出，2026-09-21 竞态实锤：应用已连接而横幅停在初始灰态）。
+#[tauri::command]
+pub fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
+    serde_json::json!({
+        "connected": state.connected.load(std::sync::atomic::Ordering::Relaxed),
+        "reason": state.last_disconnect_reason.lock().unwrap().clone(),
+    })
+}

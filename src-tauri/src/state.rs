@@ -24,6 +24,9 @@ pub struct AppState {
     pub session_rules: tokio::sync::Mutex<SessionRules>,
     /// 隧道当前是否已连接（托盘绿/灰判据）。
     pub connected: AtomicBool,
+    /// 最近一次断开原因（Connected 时清空）；`get_status` 供 webview 启动时
+    /// 补拉当前状态——`tunnel-status` 事件可能在 listener 就绪前发出（竞态实锤 2026-09-21）。
+    pub last_disconnect_reason: std::sync::Mutex<Option<String>>,
     /// 隧道停机信号发送端（v1 退出为硬退出，信号保留以备优雅停机）。
     pub tunnel_shutdown: watch::Sender<bool>,
 }

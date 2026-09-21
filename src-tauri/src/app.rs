@@ -162,6 +162,7 @@ pub fn run() {
             crate::commands::save_config,
             crate::commands::resolve_confirm,
             crate::commands::recent_logs,
+            crate::commands::get_status,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -174,6 +175,7 @@ pub fn run() {
                 logs: std::sync::Mutex::new(Vec::new()),
                 session_rules: tokio::sync::Mutex::new(SessionRules::default()),
                 connected: std::sync::atomic::AtomicBool::new(false),
+                last_disconnect_reason: std::sync::Mutex::new(None),
                 tunnel_shutdown: shutdown_tx,
             });
             let bridge = Arc::new(ConfirmBridge::default());
@@ -230,6 +232,7 @@ pub fn run() {
                             TunnelEvent::Connected => {
                                 state.session_rules.lock().await.clear();
                                 state.connected.store(true, Ordering::Relaxed);
+                                *state.last_disconnect_reason.lock().unwrap() = None;
                                 let _ = handle.emit(
                                     "tunnel-status",
                                     serde_json::json!({ "connected": true }),
@@ -241,6 +244,7 @@ pub fn run() {
                                 // 请求方收到 denied_by_user，托盘琥珀态解除。
                                 bridge.deny_all();
                                 state.connected.store(false, Ordering::Relaxed);
+                                *state.last_disconnect_reason.lock().unwrap() = Some(reason.clone());
                                 let _ = handle.emit(
                                     "tunnel-status",
                                     serde_json::json!({ "connected": false, "reason": reason }),
