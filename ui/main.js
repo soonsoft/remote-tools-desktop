@@ -472,6 +472,12 @@ if (invoke) {
   invoke("recent_logs").then((ls) => { for (let i = (ls || []).length - 1; i >= 0; i--) renderLog(ls[i]); }).catch(() => {});
   // 启动补拉当前连接状态——tunnel-status 事件可能在 listener 就绪前发出（竞态实锤 2026-09-21）
   invoke("get_status").then((s) => { if (s && typeof s.connected === "boolean") setStatus(s.connected, s.reason); }).catch(() => {});
+  // 平台窗体参数：CSS 圆角 + mac 类（红绿灯避让/隐藏自绘钮）
+  invoke("get_platform_chrome").then((c) => {
+    if (!c) return;
+    if (c.radius) document.documentElement.style.setProperty("--os-window-radius", c.radius + "px");
+    if (c.os === "macos") document.documentElement.classList.add("mac");
+  }).catch(() => {});
   loadConfig();
 } else {
   console.error("window.__TAURI__ 命令 API 不可用：检查 tauri.conf withGlobalTauri / capabilities");

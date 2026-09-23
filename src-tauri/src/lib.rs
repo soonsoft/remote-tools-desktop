@@ -4,4 +4,5 @@ pub mod app;
 pub mod commands;
 pub mod confirm;
 pub mod icons;
+pub mod platform;
 pub mod state;

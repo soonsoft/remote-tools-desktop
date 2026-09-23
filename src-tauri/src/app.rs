@@ -163,12 +163,36 @@ pub fn run() {
             crate::commands::resolve_confirm,
             crate::commands::recent_logs,
             crate::commands::get_status,
+            crate::commands::get_platform_chrome,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
             let cfg_path = app.path().app_config_dir()?.join("config.json");
             let cfg = AppConfig::load(&cfg_path);
             let (shutdown_tx, shutdown_rx) = watch::channel(false);
+            // 平台材质（2026-09-23 设计）：Win11=Mica / Win10=Acrylic /
+            // macOS=UnderWindowBackground；conf 里的 windowEffects 已移除，
+            // 运行时按探测结果单点上效果。
+            {
+                use crate::platform::PlatformChrome;
+                use tauri::window::{Effect, EffectState, EffectsBuilder};
+                if let Some(w) = app.get_webview_window("main") {
+                    let chrome = crate::platform::detect();
+                    let builder = match chrome {
+                        PlatformChrome::WindowsMica => EffectsBuilder::new()
+                            .effects([Effect::Mica]),
+                        PlatformChrome::WindowsAcrylic => EffectsBuilder::new()
+                            .effects([Effect::Acrylic]),
+                        PlatformChrome::MacOS { .. } => EffectsBuilder::new()
+                            .effects([Effect::UnderWindowBackground])
+                            .state(EffectState::FollowsWindowActiveState),
+                        PlatformChrome::Other { .. } => EffectsBuilder::new()
+                            .effects([Effect::WindowBackground]),
+                    };
+                    let _ = w.set_effects(builder.build());
+                }
+            }
+
             let state = Arc::new(AppState {
                 config_path: cfg_path,
                 config: std::sync::RwLock::new(cfg.clone()),

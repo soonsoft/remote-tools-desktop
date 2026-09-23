@@ -20,7 +20,7 @@
         "decorations": false,
         "transparent": true,
         "shadow": true,
-        "windowEffects": { "effects": ["acrylic"] }
+        "titleBarStyle": "Overlay"
       }
     ]
   },

@@ -57,3 +57,9 @@ pub fn get_status(state: State<'_, Arc<AppState>>) -> serde_json::Value {
         "reason": state.last_disconnect_reason.lock().unwrap().clone(),
     })
 }
+
+/// 平台窗体参数（2026-09-23）：webview 启动拉取 OS 类型与 CSS 圆角值。
+#[tauri::command]
+pub fn get_platform_chrome() -> serde_json::Value {
+    crate::platform::detect().as_json()
+}
