@@ -14,14 +14,15 @@ pub enum PlatformChrome {
 }
 
 impl PlatformChrome {
-    /// webview 启动补拉载荷：os 类型 + CSS 圆角值（px）。
+    /// webview 启动补拉载荷：os 类型 + CSS 圆角值（px）+ 材质名。
     pub fn as_json(&self) -> Value {
-        let (os, radius) = match self {
-            Self::WindowsMica | Self::WindowsAcrylic => ("windows", 8u32),
-            Self::MacOS { radius } => ("macos", *radius),
-            Self::Other { radius } => ("other", *radius),
+        let (os, radius, material) = match self {
+            Self::WindowsMica => ("windows", 8u32, "mica"),
+            Self::WindowsAcrylic => ("windows", 8u32, "acrylic"),
+            Self::MacOS { radius } => ("macos", *radius, "vibrancy"),
+            Self::Other { radius } => ("other", *radius, "none"),
         };
-        json!({ "os": os, "radius": radius })
+        json!({ "os": os, "radius": radius, "material": material })
     }
 }
 

@@ -98,6 +98,13 @@ svg { display: block; }
 ::-webkit-scrollbar-thumb:hover { border-width: 2px; }
 
 /* ---------- §2 ① 清玻璃框（窗体本体；容器无投影 §4、无边框 §5；外层圆角/投影交给 OS） ---------- */
+/* 材质自适应（2026-09-23 实证）：Mica 是静态壁纸取色+重度去饱和的哑光底，
+   深色罩（.58）会完全埋掉它（壁纸贡献 ±5 RGB）。Mica 时罩子减到 .28，
+   让系统材质承担氛围层——卡片对比度由 --card 的 .92 实底保证。
+   Acrylic/Vibrancy 是实时模糊，原有的 .58 罩子不变。 */
+html.mat-mica { --glass: rgba(17, 21, 28, .28); }
+html.mat-mica[data-theme="light"] { --glass: rgba(255, 255, 255, .35); }
+
 .app {
   width: 100%;
   height: 100%;

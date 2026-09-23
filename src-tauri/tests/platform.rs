@@ -55,10 +55,10 @@ fn macos_15_and_older_is_10() {
 fn chrome_json_carries_os_and_radius() {
     assert_eq!(
         chrome_for_windows_build(26100).as_json(),
-        serde_json::json!({ "os": "windows", "radius": 8 })
+        serde_json::json!({ "os": "windows", "radius": 8, "material": "mica" })
     );
     assert_eq!(
         chrome_for_macos_major(27).as_json(),
-        serde_json::json!({ "os": "macos", "radius": 20 })
+        serde_json::json!({ "os": "macos", "radius": 20, "material": "vibrancy" })
     );
 }

@@ -477,6 +477,7 @@ if (invoke) {
     if (!c) return;
     if (c.radius) document.documentElement.style.setProperty("--os-window-radius", c.radius + "px");
     if (c.os === "macos") document.documentElement.classList.add("mac");
+    if (c.material) document.documentElement.classList.add("mat-" + c.material);
   }).catch(() => {});
   loadConfig();
 } else {
